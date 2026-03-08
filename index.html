@@ -553,16 +553,27 @@ async function refreshPrices() {
   for (const a of assets) {
     if (!a.ticker||a.ticker==='NUOVO') continue;
     const sym=a.ticker.replace(/\s+/g,'').toUpperCase();
-    try {
-      const proxy='https://api.allorigins.win/get?url='+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d');
-      const res=await fetch(proxy); const raw=await res.json();
-      const d=JSON.parse(raw.contents); const meta=d?.chart?.result?.[0]?.meta;
-      if (meta&&meta.regularMarketPrice) {
+    // Try primary ticker, then fallback suffixes for European ETFs
+    const tryTickers = [sym];
+    if (!sym.includes('.') && ['VWCE','VUAA','VHYG','IWDA','SGLD','CSPX','EQQQ'].includes(sym)) {
+      tryTickers.push(sym+'.DE', sym+'.MI');
+    }
+    let meta = null;
+    for (const tryTick of tryTickers) {
+      try {
+        const proxy2='https://api.allorigins.win/get?url='+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+tryTick+'?interval=1d&range=1d');
+        const res2=await fetch(proxy2); const raw2=await res2.json();
+        const d2=JSON.parse(raw2.contents); const m2=d2?.chart?.result?.[0]?.meta;
+        if (m2&&m2.regularMarketPrice){ meta=m2; break; }
+      } catch(e2){ continue; }
+    }
+    if (meta&&meta.regularMarketPrice) {
+      try {
         let price=meta.regularMarketPrice;
         const change=meta.regularMarketChangePercent||0;
         const cur=(meta.currency||'USD').toUpperCase();
-        if (cur==='USD') price=price*fx;
-        else if (cur==='GBP') price=price*1.17;
+        if (cur==='USD') price=price/fx;        // fx = USD per 1 EUR, e.g. 1.08
+        else if (cur==='GBP') price=price/0.86; // GBP to EUR approx
         price=parseFloat(price.toFixed(2));
         livePrices[a.id]={price,change,cur};
         a.currentPrice=price; fetched++;
@@ -571,8 +582,8 @@ async function refreshPrices() {
         chip.innerHTML='<span class="ptick">'+sym+'</span><span class="pval">'+price.toLocaleString('it-IT',{style:'currency',currency:'EUR'})+'</span><span class="'+(change>=0?'pchg-up':'pchg-down')+'">'+(change>=0?'+':'')+change.toFixed(2)+'%</span>';
         bar.insertBefore(chip,bar.querySelector('.btn'));
         await new Promise(r=>setTimeout(r,350));
-      }
-    } catch(e){ console.warn('Price fail:',sym,e); }
+      } catch(e){ console.warn('Price fail:',sym,e); }
+    } // end if meta
   }
   if (fetched>0) {
     msg.textContent='';
