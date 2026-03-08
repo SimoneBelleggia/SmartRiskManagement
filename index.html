@@ -534,16 +534,23 @@ async function saveToCloud() {
 async function getEurUsd() {
   if (_eurUsdRate) return _eurUsdRate;
   try {
+    // EURUSD=X = how many USD per 1 EUR (e.g. 1.09)
+    // To convert USD price to EUR: divide by this rate
     const proxy='https://api.allorigins.win/get?url='+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/EURUSD=X?interval=1d&range=1d');
     const res=await fetch(proxy); const raw=await res.json();
     const d=JSON.parse(raw.contents);
-    _eurUsdRate=d?.chart?.result?.[0]?.meta?.regularMarketPrice||0.92;
-  } catch(e){ _eurUsdRate=0.92; }
+    const rate=d?.chart?.result?.[0]?.meta?.regularMarketPrice||1.09;
+    // Sanity check: EURUSD should be between 1.0 and 1.3
+    // If it comes back as ~0.92 it means we got USDEUR instead, so invert it
+    _eurUsdRate = (rate < 1.0) ? (1/rate) : rate;
+    console.log('EUR/USD rate:', _eurUsdRate);
+  } catch(e){ _eurUsdRate=1.09; }
   return _eurUsdRate;
 }
 
 async function refreshPrices() {
   if (assets.length===0){ showToast('Aggiungi prima degli asset!'); return; }
+  _eurUsdRate = null; // reset cache to fetch fresh rate
   const bar=document.getElementById('priceBar'), msg=document.getElementById('priceMsg');
   msg.textContent='Recupero tasso EUR/USD...';
   bar.querySelectorAll('.price-chip').forEach(c=>c.remove());
