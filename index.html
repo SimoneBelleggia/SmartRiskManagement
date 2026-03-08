@@ -45,7 +45,6 @@
         const data = await window._fbLoad(user.uid);
         if (data && data.assets) {
           assets = data.assets;
-          AV_KEY = data.avKey || AV_KEY;
           localStorage.setItem('portfolio_srm', JSON.stringify(assets));
         } else {
           const local = localStorage.getItem('portfolio_srm');
@@ -266,6 +265,21 @@ svg.donut{transform:rotate(-90deg);}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:768px){.summary-grid,.two-col,.strategy-grid,.calc-grid,.result-grid{grid-template-columns:1fr}.edit-fields{grid-template-columns:1fr}.edit-field textarea{grid-column:span 1}}
+
+/* AI ANALYSIS */
+.ai-asset-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;position:relative;overflow:hidden;}
+.ai-asset-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.ai-card-low::before{background:var(--green);}
+.ai-card-medium::before{background:var(--orange);}
+.ai-card-high::before{background:var(--red);}
+.ai-rec-card{background:var(--surface2);border-radius:8px;padding:16px 20px;margin-bottom:10px;display:flex;gap:16px;align-items:flex-start;border-left:3px solid var(--gold);}
+.ai-rec-card.buy{border-left-color:var(--green);}
+.ai-rec-card.sell{border-left-color:var(--red);}
+.ai-rec-card.hold{border-left-color:var(--blue);}
+.ai-rec-card.warning{border-left-color:var(--orange);}
+.ai-rec-icon{font-size:20px;flex-shrink:0;}
+.ai-rec-title{font-size:14px;font-weight:600;margin-bottom:4px;}
+.ai-rec-text{font-size:13px;color:#A0A0A0;line-height:1.6;}
 </style>
 </head>
 <body>
@@ -308,7 +322,7 @@ svg.donut{transform:rotate(-90deg);}
           <div style="margin-top:4px" id="headerDate"></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <button class="edit-btn" onclick="refreshPrices()" style="background:rgba(74,144,217,.1);border-color:var(--blue);color:var(--blue)">📡 Aggiorna prezzi</button>
+          <button class="edit-btn" onclick="refreshPrices()" style="background:rgba(74,144,217,.1);border-color:var(--blue);color:var(--blue)" title="Nessuna API Key richiesta!">📡 Aggiorna prezzi</button>
           <button class="edit-btn" onclick="exportJSON()" style="background:rgba(76,175,126,.1);border-color:var(--green);color:var(--green)">📤 Esporta</button>
           <button class="edit-btn" onclick="document.getElementById('importFile').click()" style="background:rgba(74,144,217,.1);border-color:var(--blue);color:var(--blue)">📥 Importa</button>
           <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
@@ -356,6 +370,7 @@ svg.donut{transform:rotate(-90deg);}
       <button class="tab" onclick="switchTab('strategia',this)">Strategia</button>
       <button class="tab" onclick="switchTab('verdetti',this)">Verdetti</button>
       <button class="tab" onclick="switchTab('heatmap',this)">🌡️ Heatmap</button>
+      <button class="tab" onclick="switchTab('ai',this)">🤖 Analisi AI</button>
     </div>
 
     <!-- PORTAFOGLIO -->
@@ -478,6 +493,61 @@ svg.donut{transform:rotate(-90deg);}
       <div id="heatmapGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px"></div>
     </div>
 
+    <!-- AI ANALYSIS TAB -->
+    <div class="tab-content" id="tab-ai">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="section-title" style="margin:0">Analisi AI del portafoglio</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:4px">Generata automaticamente da Claude AI ad ogni aggiornamento prezzi</div>
+        </div>
+        <button onclick="runAIAnalysis()" class="edit-btn" style="background:rgba(138,43,226,.15);border-color:#8B2BE2;color:#C084FC">🤖 Analizza ora</button>
+      </div>
+
+      <!-- SCORE CARD -->
+      <div id="aiScoreCard" style="display:none;margin-bottom:24px">
+        <div style="background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(138,43,226,.08));border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;align-items:center;gap:32px;flex-wrap:wrap">
+          <div style="text-align:center;min-width:100px">
+            <div style="font-family:'Playfair Display',serif;font-size:56px;font-weight:900;line-height:1" id="aiScoreNum">—</div>
+            <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-muted);letter-spacing:.1em;margin-top:4px">PORTFOLIO SCORE</div>
+            <div style="font-size:12px;font-weight:600;margin-top:6px" id="aiScoreLabel">—</div>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <div style="width:100%;height:8px;background:var(--surface3);border-radius:4px;overflow:hidden;margin-bottom:16px">
+              <div id="aiScoreBar" style="height:100%;border-radius:4px;transition:width 1s ease;width:0%"></div>
+            </div>
+            <div id="aiScoreSummary" style="font-size:14px;line-height:1.7;color:var(--text-muted)"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ASSET ANALYSIS GRID -->
+      <div id="aiAssetGrid" style="display:none;margin-bottom:24px">
+        <div class="section-title">Valutazione per asset</div>
+        <div id="aiAssetCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px"></div>
+      </div>
+
+      <!-- RECOMMENDATIONS -->
+      <div id="aiRecommendations" style="display:none;margin-bottom:24px">
+        <div class="section-title">Suggerimenti concreti</div>
+        <div id="aiRecList"></div>
+      </div>
+
+      <!-- LOADING STATE -->
+      <div id="aiLoading" style="display:none;text-align:center;padding:64px 24px">
+        <div style="font-size:48px;margin-bottom:16px;animation:pulse 1.5s infinite">🤖</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:8px">Analisi in corso...</div>
+        <div style="font-size:13px;color:var(--text-muted)" id="aiLoadingMsg">Valutazione del portafoglio</div>
+      </div>
+
+      <!-- EMPTY STATE -->
+      <div id="aiEmpty" style="text-align:center;padding:64px 24px">
+        <div style="font-size:48px;margin-bottom:16px">🤖</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:8px">Analisi AI pronta</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px">Clicca "Analizza ora" oppure aggiorna i prezzi per generare un'analisi completa del tuo portafoglio.</div>
+        <button onclick="runAIAnalysis()" style="padding:14px 32px;background:var(--gold);color:var(--dark);border:none;border-radius:8px;font-family:'DM Mono',monospace;font-size:13px;font-weight:500;cursor:pointer;">🤖 Analizza portafoglio</button>
+      </div>
+    </div>
+
     <div class="disclaimer">⚠ Solo a scopo informativo. Non costituisce consulenza finanziaria. I mercati comportano rischi di perdita del capitale. Consulta un professionista prima di investire.</div>
   </div>
 </div>
@@ -490,12 +560,15 @@ svg.donut{transform:rotate(-90deg);}
   <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px">Salvato automaticamente su cloud ☁️</div>
 
   <div class="edit-section">
-    <div class="edit-section-title">API Key Alpha Vantage</div>
-    <div class="edit-field" style="margin-bottom:8px">
-      <label>Inserisci la tua API Key per prezzi live</label>
-      <input type="text" id="editAvKey" placeholder="es. ABCDEFGH12345678" style="font-family:'DM Mono',monospace">
+    <div class="edit-section-title">💡 Formato Ticker</div>
+    <div style="font-size:12px;color:var(--text-muted);line-height:1.8;margin-bottom:8px">
+      Usa il formato <strong style="color:var(--gold)">Yahoo Finance</strong>:<br>
+      • Azioni USA: <span style="color:var(--gold)">AAPL, NVDA, TSLA, CAT</span><br>
+      • ETF Europa (Xetra): <span style="color:var(--gold)">VWCE.DE, VUAA.DE, ASML.AS</span><br>
+      • ETF Europa (Milano): <span style="color:var(--gold)">VWCE.MI, VHYG.MI</span><br>
+      • Oro: <span style="color:var(--gold)">GLD</span> o <span style="color:var(--gold)">SGLD.MI</span>
     </div>
-    <div style="font-size:11px;color:var(--text-muted);line-height:1.6">Ottieni la tua chiave gratuita su <strong style="color:var(--gold)">alphavantage.co</strong> → Get Free API Key</div>
+    <div style="font-size:11px;color:var(--text-muted)">Cerca il ticker esatto su <strong style="color:var(--gold)">finance.yahoo.com</strong></div>
   </div>
 
   <div class="edit-section">
@@ -514,7 +587,7 @@ svg.donut{transform:rotate(-90deg);}
     <div style="font-size:14px;color:var(--text-muted);line-height:1.8;margin-bottom:28px">Il tuo portafoglio personale ti aspetta.<br>I dati sono salvati sul cloud e visibili solo a te.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:28px">
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;margin-bottom:6px">✏️</div><div style="font-size:11px;color:var(--text-muted)">Aggiungi i tuoi asset</div></div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;margin-bottom:6px">📡</div><div style="font-size:11px;color:var(--text-muted)">Prezzi live Alpha Vantage</div></div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;margin-bottom:6px">📡</div><div style="font-size:11px;color:var(--text-muted)">Prezzi live Yahoo Finance</div></div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:22px;margin-bottom:6px">☁️</div><div style="font-size:11px;color:var(--text-muted)">Dati privati su cloud</div></div>
     </div>
     <button onclick="closeOnboarding()" style="width:100%;padding:15px;background:var(--gold);color:var(--dark);border:none;border-radius:10px;font-family:'DM Mono',monospace;font-size:14px;font-weight:500;cursor:pointer;">→ Inizia subito</button>
@@ -530,69 +603,76 @@ svg.donut{transform:rotate(-90deg);}
 <script>
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let assets = [];
-let AV_KEY  = '';
 let livePrices = {};
 let perfChart = null, barChart = null, dcaChart = null;
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 function loadData() {
   try { assets = JSON.parse(localStorage.getItem('portfolio_srm')) || []; } catch(e) { assets = []; }
-  AV_KEY = localStorage.getItem('srm_avkey') || '';
 }
 function saveData() {
   localStorage.setItem('portfolio_srm', JSON.stringify(assets));
-  localStorage.setItem('srm_avkey', AV_KEY);
 }
 async function saveToCloud() {
   if (!window._currentUid) return;
   const ind = document.getElementById('syncIndicator');
   ind.style.display = 'flex';
   try {
-    await window._fbSave(window._currentUid, { assets, avKey: AV_KEY, updatedAt: new Date().toISOString() });
+    await window._fbSave(window._currentUid, { assets, updatedAt: new Date().toISOString() });
     setTimeout(() => ind.style.display = 'none', 1500);
   } catch(e) { ind.style.display = 'none'; }
 }
 
-// ─── ALPHA VANTAGE PRICES ────────────────────────────────────────────────────
+// ─── YAHOO FINANCE PRICES ────────────────────────────────────────────────────
 async function refreshPrices() {
-  if (!AV_KEY) {
-    showToast('⚠️ Inserisci la API Key in Modifica → Alpha Vantage');
-    openEdit();
-    return;
-  }
   if (assets.length === 0) { showToast('Aggiungi prima degli asset!'); return; }
 
   const bar = document.getElementById('priceBar');
   const msg = document.getElementById('priceBarMsg');
   msg.textContent = '⏳ Caricamento prezzi live...';
-  // Remove old chips
   bar.querySelectorAll('.price-chip').forEach(c => c.remove());
 
   let fetched = 0;
-  // Alpha Vantage free: 25 req/day, 5 req/min — fetch sequentially
+  // Yahoo Finance via allorigins proxy (no API key needed)
   for (const a of assets) {
     if (!a.ticker || a.ticker === 'NUOVO') continue;
-    // Normalize ticker: remove spaces, ETF suffixes for AV
     const sym = a.ticker.replace(/\s+/g,'').toUpperCase();
     try {
-      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${sym}&apikey=${AV_KEY}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      const q = data['Global Quote'];
-      if (q && q['05. price']) {
-        const price  = parseFloat(q['05. price']);
-        const change = parseFloat(q['10. change percent']?.replace('%','') || 0);
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=1d`;
+      const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const res = await fetch(proxy);
+      const raw = await res.json();
+      const data = JSON.parse(raw.contents);
+      const meta = data?.chart?.result?.[0]?.meta;
+      if (meta && meta.regularMarketPrice) {
+        let price = meta.regularMarketPrice;
+        let change = meta.regularMarketChangePercent || 0;
+        const currency = meta.currency || 'USD';
+
+        // Convert to EUR if needed
+        if (currency === 'USD') {
+          const fxUrl = `https://query1.finance.yahoo.com/v8/finance/chart/EURUSD=X?interval=1d&range=1d`;
+          const fxProxy = `https://api.allorigins.win/get?url=${encodeURIComponent(fxUrl)}`;
+          try {
+            const fxRes = await fetch(fxProxy);
+            const fxRaw = await fxRes.json();
+            const fxData = JSON.parse(fxRaw.contents);
+            const fxRate = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+            if (fxRate) price = price * fxRate;
+          } catch(e) { price = price * 0.92; } // fallback rate
+        }
+
+        price = parseFloat(price.toFixed(2));
         livePrices[a.id] = { price, change };
-        // Update asset currentPrice
         a.currentPrice = price;
         fetched++;
-        // Add chip to bar
+
         const chip = document.createElement('div');
         chip.className = `price-chip ${change>=0?'up':'down'}`;
         chip.innerHTML = `<span class="price-ticker">${sym}</span><span class="price-val">€${price.toFixed(2)}</span><span class="${change>=0?'price-chg-up':'price-chg-down'}">${change>=0?'+':''}${change.toFixed(2)}%</span>`;
         bar.insertBefore(chip, bar.querySelector('.price-refresh'));
-        // Small delay to respect rate limit
-        await new Promise(r => setTimeout(r, 1200));
+
+        await new Promise(r => setTimeout(r, 300));
       }
     } catch(e) { console.warn('Price fetch failed for', sym, e); }
   }
@@ -605,7 +685,7 @@ async function refreshPrices() {
     renderAll();
     showToast(`📡 ${fetched} prezzi aggiornati!`);
   } else {
-    msg.textContent = '⚠️ Nessun prezzo ricevuto. Verifica API Key o ticker.';
+    msg.textContent = '⚠️ Nessun prezzo ricevuto. Verifica i ticker (usa formato Yahoo Finance es. VWCE.DE, ASML.AS)';
   }
 }
 
@@ -907,7 +987,6 @@ function addAsset(){
   setTimeout(()=>{const el=document.getElementById(`et_t_${id}`);if(el){el.focus();el.select();}},100);
 }
 async function saveAll(){
-  const avKeyEl=document.getElementById('editAvKey');if(avKeyEl&&avKeyEl.value.trim()){AV_KEY=avKeyEl.value.trim();}
   assets.forEach(a=>{
     const t=document.getElementById(`et_t_${a.id}`);if(t)a.ticker=t.value;
     const n=document.getElementById(`et_n_${a.id}`);if(n)a.name=n.value;
@@ -940,6 +1019,7 @@ function switchTab(id,el){
   if(id==='strategia')renderStrategia();
   if(id==='verdetti')renderVerdetti();
   if(id==='heatmap')renderHeatmap();
+  if(id==='ai'&&document.getElementById('aiEmpty').style.display!=='none'){};
 }
 
 // ─── ONBOARDING ───────────────────────────────────────────────────────────────
@@ -948,6 +1028,202 @@ function closeOnboarding(){localStorage.setItem('srm_ob','1');document.getElemen
 
 // ─── TOAST ────────────────────────────────────────────────────────────────────
 function showToast(msg){const t=document.createElement('div');t.style.cssText='position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:var(--gold);color:var(--dark);padding:12px 24px;border-radius:8px;font-family:"DM Mono",monospace;font-size:13px;font-weight:500;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,.5);';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+
+
+// ─── AI ANALYSIS ─────────────────────────────────────────────────────────────
+async function runAIAnalysis() {
+  if (assets.length === 0) { showToast('Aggiungi prima degli asset!'); return; }
+
+  // Show loading, hide others
+  document.getElementById('aiEmpty').style.display = 'none';
+  document.getElementById('aiScoreCard').style.display = 'none';
+  document.getElementById('aiAssetGrid').style.display = 'none';
+  document.getElementById('aiRecommendations').style.display = 'none';
+  document.getElementById('aiLoading').style.display = 'block';
+
+  // Switch to AI tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-ai').classList.add('active');
+  document.querySelector('[onclick="switchTab(\'ai\',this)"]')?.classList.add('active');
+
+  const totalInv = assets.reduce((s,a) => s+a.invested, 0);
+
+  // Build portfolio summary for AI
+  const portfolioData = {
+    totalInvested: totalInv,
+    numAssets: assets.length,
+    assets: assets.map(a => ({
+      ticker: a.ticker,
+      name: a.name,
+      invested: a.invested,
+      pct: totalInv > 0 ? (a.invested/totalInv*100).toFixed(1) : 0,
+      buyPrice: a.buyPrice || null,
+      currentPrice: a.currentPrice || null,
+      pnl: (a.currentPrice > 0 && a.buyPrice > 0 && a.qty > 0)
+        ? ((a.currentPrice - a.buyPrice) * a.qty).toFixed(2)
+        : null,
+      pnlPct: (a.currentPrice > 0 && a.buyPrice > 0)
+        ? (((a.currentPrice - a.buyPrice) / a.buyPrice) * 100).toFixed(1)
+        : null,
+      risk: a.risk,
+      qty: a.qty || null,
+    }))
+  };
+
+  const prompt = `Sei un esperto analista finanziario. Analizza questo portafoglio di investimenti e fornisci una valutazione professionale in italiano.
+
+PORTAFOGLIO:
+${JSON.stringify(portfolioData, null, 2)}
+
+Rispondi SOLO con un JSON valido (nessun testo prima o dopo) con questa struttura esatta:
+{
+  "score": <numero 0-100>,
+  "scoreLabel": <"Eccellente"|"Buono"|"Discreto"|"Da migliorare"|"Rischioso">,
+  "scoreSummary": "<2-3 frasi di valutazione generale del portafoglio>",
+  "assets": [
+    {
+      "ticker": "<ticker>",
+      "risk": <"low"|"medium"|"high">,
+      "expectedReturn": <numero percentuale annuo realistico basato su dati storici>,
+      "sentiment": <"bullish"|"neutral"|"bearish">,
+      "analysis": "<1-2 frasi di analisi specifica per questo asset>",
+      "action": <"mantieni"|"aumenta"|"riduci"|"vendi">
+    }
+  ],
+  "recommendations": [
+    {
+      "type": <"buy"|"sell"|"hold"|"warning">,
+      "icon": "<emoji>",
+      "title": "<titolo breve>",
+      "text": "<spiegazione concreta e actionable di 2-3 frasi>"
+    }
+  ]
+}
+
+Linee guida per la valutazione:
+- Score: considera diversificazione, bilanciamento rischio, concentrazione, qualità degli asset
+- ExpectedReturn: usa dati storici realistici (S&P500 ~10%, ETF globali ~8-9%, tech growth ~12-15%, speculativi ~20%+)
+- Dai massimo 5 raccomandazioni concrete e specifiche per questo portafoglio
+- Sii diretto e professionale, non generico`;
+
+  try {
+    document.getElementById('aiLoadingMsg').textContent = 'Analisi con Claude AI in corso...';
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const analysis = JSON.parse(clean);
+
+    document.getElementById('aiLoading').style.display = 'none';
+    renderAIAnalysis(analysis, portfolioData);
+
+    // Auto-update risk and expectedReturn on assets
+    analysis.assets.forEach(ai => {
+      const asset = assets.find(a => a.ticker.toUpperCase() === ai.ticker.toUpperCase());
+      if (asset) {
+        asset.risk = ai.risk;
+        asset.expectedReturn = ai.expectedReturn;
+      }
+    });
+    saveData();
+    saveToCloud();
+    renderAll();
+    showToast('🤖 Analisi completata!');
+
+  } catch(e) {
+    document.getElementById('aiLoading').style.display = 'none';
+    document.getElementById('aiEmpty').style.display = 'block';
+    document.getElementById('aiEmpty').innerHTML = `
+      <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+      <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:8px">Errore analisi</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px">${e.message}</div>
+      <button onclick="runAIAnalysis()" style="padding:14px 32px;background:var(--gold);color:var(--dark);border:none;border-radius:8px;font-family:'DM Mono',monospace;font-size:13px;cursor:pointer;">Riprova</button>`;
+    console.error('AI analysis error:', e);
+  }
+}
+
+function renderAIAnalysis(analysis, portfolioData) {
+  // SCORE CARD
+  const scoreCard = document.getElementById('aiScoreCard');
+  scoreCard.style.display = 'block';
+  document.getElementById('aiScoreNum').textContent = analysis.score;
+  document.getElementById('aiScoreNum').style.color =
+    analysis.score >= 75 ? 'var(--green)' :
+    analysis.score >= 50 ? 'var(--gold)' :
+    analysis.score >= 25 ? 'var(--orange)' : 'var(--red)';
+  document.getElementById('aiScoreLabel').textContent = analysis.scoreLabel;
+  document.getElementById('aiScoreLabel').style.color =
+    analysis.score >= 75 ? 'var(--green)' :
+    analysis.score >= 50 ? 'var(--gold)' :
+    analysis.score >= 25 ? 'var(--orange)' : 'var(--red)';
+  document.getElementById('aiScoreBar').style.width = analysis.score + '%';
+  document.getElementById('aiScoreBar').style.background =
+    analysis.score >= 75 ? 'var(--green)' :
+    analysis.score >= 50 ? 'var(--gold)' :
+    analysis.score >= 25 ? 'var(--orange)' : 'var(--red)';
+  document.getElementById('aiScoreSummary').textContent = analysis.scoreSummary;
+
+  // ASSET CARDS
+  const assetGrid = document.getElementById('aiAssetGrid');
+  assetGrid.style.display = 'block';
+  const sentimentIcon = { bullish: '📈', neutral: '➡️', bearish: '📉' };
+  const actionColor = { mantieni: 'var(--blue)', aumenta: 'var(--green)', riduci: 'var(--orange)', vendi: 'var(--red)' };
+  const actionLabel = { mantieni: '⟳ Mantieni', aumenta: '↑ Aumenta', riduci: '↓ Riduci', vendi: '✕ Vendi' };
+
+  document.getElementById('aiAssetCards').innerHTML = analysis.assets.map(a => {
+    const asset = assets.find(x => x.ticker.toUpperCase() === a.ticker.toUpperCase());
+    const pnlHtml = asset?.pnl !== undefined && asset?.buyPrice > 0 && asset?.currentPrice > 0 && asset?.qty > 0
+      ? (() => { const p=(asset.currentPrice-asset.buyPrice)*asset.qty; return `<div style="font-family:'DM Mono',monospace;font-size:12px;color:${p>=0?'var(--green)':'var(--red)'}">${p>=0?'+':''}€${p.toFixed(0)}</div>`; })()
+      : '';
+    return `<div class="ai-asset-card ai-card-${a.risk}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <div style="font-family:'DM Mono',monospace;font-weight:500;color:var(--gold);font-size:14px">${a.ticker} ${sentimentIcon[a.sentiment]||'➡️'}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${asset?.name||''}</div>
+        </div>
+        <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-family:'DM Mono',monospace;background:rgba(201,168,76,.1);color:${actionColor[a.action]||'var(--gold)'};border:1px solid ${actionColor[a.action]||'var(--gold)'}">
+          ${actionLabel[a.action]||a.action}
+        </span>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:10px">
+        <div><div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-muted)">REND. ATTESO</div><div style="font-family:'DM Mono',monospace;font-size:14px;color:var(--green)">+${a.expectedReturn}%/anno</div></div>
+        <div><div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-muted)">RISCHIO</div><div style="font-family:'DM Mono',monospace;font-size:14px;color:${a.risk==='low'?'var(--green)':a.risk==='medium'?'var(--orange)':'var(--red)'}">${a.risk==='low'?'Basso':a.risk==='medium'?'Medio':'Alto'}</div></div>
+        ${pnlHtml ? `<div><div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-muted)">P&L</div>${pnlHtml}</div>` : ''}
+      </div>
+      <div style="font-size:12px;color:#A0A0A0;line-height:1.6">${a.analysis}</div>
+    </div>`;
+  }).join('');
+
+  // RECOMMENDATIONS
+  const recDiv = document.getElementById('aiRecommendations');
+  recDiv.style.display = 'block';
+  document.getElementById('aiRecList').innerHTML = analysis.recommendations.map(r =>
+    `<div class="ai-rec-card ${r.type}">
+      <div class="ai-rec-icon">${r.icon}</div>
+      <div><div class="ai-rec-title">${r.title}</div><div class="ai-rec-text">${r.text}</div></div>
+    </div>`
+  ).join('');
+}
+
+// Auto-run AI after price refresh
+const _origRefresh = refreshPrices;
+refreshPrices = async function() {
+  await _origRefresh();
+  if (assets.length > 0) {
+    setTimeout(() => runAIAnalysis(), 500);
+  }
+};
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.getElementById('headerDate').textContent=new Date().toLocaleDateString('it-IT',{month:'long',year:'numeric'});
